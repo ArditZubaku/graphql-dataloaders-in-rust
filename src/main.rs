@@ -1,8 +1,11 @@
 use async_graphql::dataloader::DataLoader;
+use async_graphql::http::GraphiQLSource;
 use async_graphql::{EmptyMutation, EmptySubscription, Schema};
 use async_graphql_axum::{GraphQLRequest, GraphQLResponse};
 
-use axum::{Router, extract::State, routing::post};
+use axum::response::{Html, IntoResponse};
+use axum::routing::get;
+use axum::{Router, extract::State};
 
 use tokio::net::TcpListener;
 
@@ -23,6 +26,10 @@ async fn gql_handler(State(schema): State<AppSchema>, gql_req: GraphQLRequest) -
     schema.execute(request).await.into()
 }
 
+async fn playground() -> impl IntoResponse {
+    Html(GraphiQLSource::build().endpoint("/graphql").finish())
+}
+
 #[tokio::main]
 async fn main() {
     let db = DB;
@@ -31,9 +38,10 @@ async fn main() {
     // This gives us request-scoped caching.
     let schema = Schema::build(Query { db }, EmptyMutation, EmptySubscription).finish();
 
+    // Route GET requests to the playground and POST requests to the custom gql_handler
     let app = Router::new()
-        .route("/graphql", post(gql_handler))
-        .with_state(schema);
+        .route("/graphql", get(playground).post(gql_handler))
+        .with_state(schema); // Inject the schema as application state
 
     let listener = TcpListener::bind("0.0.0.0:3000").await.unwrap();
 
